@@ -28,7 +28,7 @@ export default function KB() {
     setBusy(true)
     try {
       await api.saveKb({ ...form, keywords: form.keywords.split(',').map((s) => s.trim()).filter(Boolean) })
-      t.ok('บันทึกแล้ว (Gemini ใช้ใน ~5 นาที)'); setForm(null); load()
+      t.ok('บันทึกแล้ว (AI ใช้ใน ~5 นาที)'); setForm(null); load()
     } catch (e) { t.err(e.message) } finally { setBusy(false) }
   }
 
@@ -42,7 +42,7 @@ export default function KB() {
         <button className="sm primary" onClick={() => setForm({ ...EMPTY })}>+ บทความ</button>
       </div>
       <p className="muted sm">
-        แหล่งข้อมูลกลางที่ <b>Gemini AI</b> ดึงไปใช้ตอบลูกค้า (ค้นตามคำถามอัตโนมัติ) — ใส่: รายละเอียดคอร์ส · ตารางติว · เงื่อนไข · วิธีชำระ · FAQ ต่าง ๆ
+        แหล่งข้อมูลกลางที่ <b>Claude AI</b> ดึงไปใช้ตอบลูกค้า (ค้นตามคำถามอัตโนมัติ) — ใส่: รายละเอียดคอร์ส · ตารางติว · เงื่อนไข · วิธีชำระ · FAQ ต่าง ๆ
       </p>
 
       {hint && <p className="err">{hint}</p>}
@@ -55,7 +55,7 @@ export default function KB() {
         {showGaps && (!gaps ? <Spinner /> : (
           <>
             <p className="muted sm">
-              คำถามที่ Gemini ตอบไปแล้ว แต่ <b>ไม่เจอบทความ/FAQ ที่เกี่ยวข้องเลย</b> ({gaps.total.toLocaleString()} ครั้งใน {gaps.days} วัน) — เพิ่มบทความให้ AI ฉลาดขึ้น
+              คำถามที่ AI ตอบไปแล้ว แต่ <b>ไม่เจอบทความ/FAQ ที่เกี่ยวข้องเลย</b> ({gaps.total.toLocaleString()} ครั้งใน {gaps.days} วัน) — เพิ่มบทความให้ AI ฉลาดขึ้น
             </p>
             <div className="grid two">
               <div>

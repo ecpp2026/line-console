@@ -85,7 +85,7 @@ export default function RichMenus() {
       await api.setMenuGemini(geminiModal.rid, {
         enabled: geminiModal.enabled, temperature: geminiModal.temperature,
       })
-      t.ok('บันทึกการตั้งค่า Gemini แล้ว')
+      t.ok('บันทึกการตั้งค่า AI แล้ว')
       setGeminiModal(null)
       load()
     } catch (e) { t.err(e.message) } finally { setGeminiBusy(false) }
@@ -120,13 +120,13 @@ export default function RichMenus() {
                     ตั้ง default
                   </button>
                   <button className={`xs ${m.geminiEnabled ? 'primary' : ''}`}
-                          title="ตั้งค่า Gemini AI สำหรับเมนูนี้"
+                          title="ตั้งค่า Claude AI สำหรับเมนูนี้"
                           onClick={() => setGeminiModal({
                             rid: m.richMenuId, name: m.name,
                             enabled: !!m.geminiEnabled,
                             temperature: typeof m.geminiTemperature === 'number' ? m.geminiTemperature : 0.7,
                           })}>
-                    🤖 Gemini{m.geminiEnabled ? ' ✓' : ''}
+                    🤖 AI{m.geminiEnabled ? ' ✓' : ''}
                   </button>
                   <button className="xs danger" onClick={() => confirm('ลบเมนูนี้?') && api.deleteMenu(m.richMenuId).then(() => { t.ok('ลบแล้ว'); load() }).catch((e) => t.err(e.message))}>
                     ลบ
@@ -192,14 +192,14 @@ export default function RichMenus() {
         <div className="modal-bg" onClick={() => setGeminiModal(null)}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div className="row spread">
-              <h3>🤖 ตั้งค่า Gemini — {geminiModal.name}</h3>
+              <h3>🤖 ตั้งค่า AI — {geminiModal.name}</h3>
               <button className="xs" onClick={() => setGeminiModal(null)}>✕</button>
             </div>
 
             <label>
               <input type="checkbox" checked={geminiModal.enabled}
                      onChange={(e) => setGeminiModal({ ...geminiModal, enabled: e.target.checked })} />
-              {' '}เปิดให้ Gemini ตอบข้อความอัตโนมัติ เมื่อ user ที่ถือเมนูนี้ทักเข้ามา
+              {' '}เปิดให้ AI ตอบข้อความอัตโนมัติ เมื่อ user ที่ถือเมนูนี้ทักเข้ามา
             </label>
 
             <div style={{ marginTop: 14, opacity: geminiModal.enabled ? 1 : 0.5 }}>

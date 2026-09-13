@@ -84,7 +84,7 @@ export default function AutoReply() {
           <>
             <p className="muted sm">
               จากข้อความ {gaps.total_in_text.toLocaleString()} ข้อความ · <b>{gaps.unmatched.toLocaleString()} ({gaps.unmatched_pct}%)</b> ไม่ตรงกฎไหนเลย
-              (ตกไป fallback / Gemini)
+              (ตกไป fallback / AI)
             </p>
             <div className="grid two">
               <div>

@@ -187,9 +187,9 @@ export default function Admins({ me }) {
       </section>
 
       <section className="card">
-        <h3>Gemini AI — ข้อมูลให้ AI ใช้ตอบ</h3>
+        <h3>Claude AI — ข้อมูลให้ AI ใช้ตอบ</h3>
         <p className="muted xs">
-          AI ตอบลูกค้าที่อยู่บนเมนู Gemini เฉพาะข้อความที่ไม่ตรงกฎไหน โดยใช้: ข้อความนี้ + ราคาคอร์ส/บัญชี + กฎตอบอัตโนมัติ (text/fallback) เป็นข้อมูล
+          AI (Claude) ตอบลูกค้าที่อยู่บนเมนูเปิด AI เฉพาะข้อความที่ไม่ตรงกฎไหน โดยใช้: ข้อความนี้ + ราคาคอร์ส/บัญชี + กฎตอบอัตโนมัติ (text/fallback) เป็นข้อมูล
           <br />ใส่: ตารางติว · ช่องทางติดต่อ · นโยบายคืนเงิน/เลื่อนคอร์ส · FAQ ที่ยังไม่ได้ทำเป็นกฎ
         </p>
         <textarea rows={8} value={gctx} onChange={(e) => setGctx(e.target.value)}

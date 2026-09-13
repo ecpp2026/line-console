@@ -289,7 +289,7 @@ function Summary({ d, a, nav }) {
         <Stat label="โควตาข้อความ" value={sys.quota_pct != null ? sys.quota_pct + '%' : nf(sys.quota_used)}
               sub={`${nf(sys.quota_used)} / ${nf(sys.quota_limit)}`} />
         <Stat label="Error 24 ชม." value={nf(sys.errors_24h)} sub={sys.errors_24h ? '⚠ ตรวจสอบ' : 'ปกติ'} />
-        <Stat label="Gemini ตอบ 7 วัน" value={nf(d.messages.gemini_7d)} />
+        <Stat label="AI ตอบ 7 วัน" value={nf(d.messages.gemini_7d)} />
       </div>
 
       <Card title="Quick actions">
@@ -524,7 +524,7 @@ function Messages({ d, a }) {
         <Card title="ชนิดข้อความที่เข้ามา">
           <BarList rows={a?.messages?.by_type} labelKey="type" valueKey="count" color={CAT} />
         </Card>
-        <Card title="ข้อความออก — แยกที่มา" sub="อัตโนมัติ vs แอดมิน vs Gemini">
+        <Card title="ข้อความออก — แยกที่มา" sub="อัตโนมัติ vs แอดมิน vs AI">
           <BarList rows={a?.messages?.out_by_source} labelKey="source" valueKey="count" color={CAT[1]} />
         </Card>
       </div>

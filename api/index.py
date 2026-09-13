@@ -31,7 +31,9 @@ from _lib.config import (LINE_CHANNEL_SECRET, CRON_SECRET, ALERT_USER_IDS,
                          LINE_LOGIN_ASSERTION_PRIVATE_KEY, APP_URL, EASYSLIP_TOKEN,
                          ENFORCE_RICHMENU_ID, ENFORCE_EXCLUDE_MENUS,
                          GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TRIGGER_MENU_NAME,
+                         ANTHROPIC_API_KEY, ANTHROPIC_MODEL,
                          SLIP_SUCCESS_RICHMENU_ID)
+import anthropic
 import httpx
 
 app = FastAPI(title="LINE Console API")
@@ -244,8 +246,9 @@ async def health(deep: int = 0, test_gemini: int = 0, test_uid: str = "", test_a
     except Exception as e:
         checks["liff_sync"] = f"error: {str(e)[:120]}"
     checks["gemini"] = {
-        "api_key_set": bool(GEMINI_API_KEY),
-        "model": GEMINI_MODEL,
+        "provider": "anthropic",  # เปลี่ยนมาจาก Gemini — ชื่อ key นี้คงไว้เพื่อ compat กับของเดิม
+        "api_key_set": bool(ANTHROPIC_API_KEY),
+        "model": ANTHROPIC_MODEL,
         "trigger_menu_name": GEMINI_TRIGGER_MENU_NAME,
     }
     try:
@@ -268,15 +271,16 @@ async def health(deep: int = 0, test_gemini: int = 0, test_uid: str = "", test_a
 
     if test_gemini:
         try:
-            g_url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-                     f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}")
-            async with httpx.AsyncClient(timeout=20) as c:
-                gr = await c.post(g_url, json={
-                    "contents": [{"role": "user", "parts": [{"text": "สวัสดี ทดสอบระบบ"}]}],
-                    "generationConfig": {"maxOutputTokens": 200},
-                })
-            checks["gemini"]["live_test_status"] = gr.status_code
-            checks["gemini"]["live_test_body"] = gr.text[:1000]
+            _cl = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            resp = await _cl.messages.create(
+                model=ANTHROPIC_MODEL, max_tokens=200,
+                messages=[{"role": "user", "content": "สวัสดี ทดสอบระบบ"}])
+            checks["gemini"]["live_test_status"] = 200
+            checks["gemini"]["live_test_body"] = "".join(
+                b.text for b in resp.content if b.type == "text")[:1000]
+        except anthropic.APIStatusError as e:
+            checks["gemini"]["live_test_status"] = e.status_code
+            checks["gemini"]["live_test_body"] = str(e.message)[:1000]
         except Exception as e:
             checks["gemini"]["live_test_error"] = str(e)
 
@@ -290,13 +294,15 @@ async def health(deep: int = 0, test_gemini: int = 0, test_uid: str = "", test_a
             checks["gemini"]["ask_kb_hit"] = bool(kb)
             checks["gemini"]["ask_answer"] = ans
             if ans is None:
-                # debug: ยิงตรงดูว่า model คืนอะไร
-                async with httpx.AsyncClient(timeout=25) as c:
-                    dr = await c.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}",
-                        json={"contents": [{"role": "user", "parts": [{"text": test_ask}]}],
-                              "generationConfig": {"maxOutputTokens": 8192}})
-                checks["gemini"]["ask_debug"] = dr.text[:800]
+                # debug: ยิงตรงดูว่า model คืนอะไร (ไม่ใช้ tools กันเคส tool loop ตัน)
+                try:
+                    _cl = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+                    dr = await _cl.messages.create(
+                        model=ANTHROPIC_MODEL, max_tokens=1024,
+                        messages=[{"role": "user", "content": test_ask}])
+                    checks["gemini"]["ask_debug"] = dr.to_json()[:800]
+                except Exception as e2:
+                    checks["gemini"]["ask_debug"] = f"debug call error: {e2}"
         except Exception as e:
             checks["gemini"]["ask_error"] = repr(e)
 
@@ -692,18 +698,16 @@ async def _easyslip_verify(image_bytes: bytes):
 
 
 async def _gemini_classify_slip(image_bytes: bytes, mime: str) -> dict | None:
-    """ใช้ Gemini (vision) เดาว่ารูปนี้เป็นสลิปโอนเงิน/หลักฐานชำระเงินไหม + อ่านข้อมูลคร่าว ๆ
+    """ใช้ Claude (vision) เดาว่ารูปนี้เป็นสลิปโอนเงิน/หลักฐานชำระเงินไหม + อ่านข้อมูลคร่าว ๆ
     (ยอด/ธนาคาร/เลขบัญชี/ref/วันที่) — เป็นแค่ตัวช่วยกรอง+อ่านเบื้องต้น ไม่ใช่การยืนยันที่เชื่อถือได้
-    100% (ไม่มี fraud-check เหมือน EasySlip) คืน None ถ้าปิดฟีเจอร์ (ไม่ตั้ง GEMINI_API_KEY) หรือ error"""
-    if not GEMINI_API_KEY or not image_bytes:
+    100% (ไม่มี fraud-check เหมือน EasySlip) คืน None ถ้าปิดฟีเจอร์ (ไม่ตั้ง ANTHROPIC_API_KEY) หรือ error"""
+    if not ANTHROPIC_API_KEY or not image_bytes:
         return None
     b64 = base64.b64encode(image_bytes).decode()
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}")
     prompt = (
         "ดูรูปนี้แล้วบอกว่าเป็น \"สลิปโอนเงิน/หลักฐานการชำระเงิน\" (สลิปธนาคาร, mobile banking, "
-        "พร้อมเพย์ ใบเสร็จโอนเงิน ฯลฯ) หรือไม่ ตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่นนอก JSON "
-        "ตามโครงสร้างนี้เป๊ะ ๆ:\n"
+        "พร้อมเพย์ ใบเสร็จโอนเงิน ฯลฯ) หรือไม่ ตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่นนอก JSON ห้ามมี markdown "
+        "code fence ตามโครงสร้างนี้เป๊ะ ๆ:\n"
         '{"is_slip": true หรือ false, "confidence": ตัวเลข 0 ถึง 1 (ความมั่นใจในคำตอบ is_slip), '
         '"amount": จำนวนเงิน (ตัวเลขล้วน) หรือ null, "bank": ชื่อธนาคาร หรือ null, '
         '"receiver_account": เลขบัญชี/พร้อมเพย์ปลายทางที่อ่านได้ หรือ null, '
@@ -711,23 +715,18 @@ async def _gemini_classify_slip(image_bytes: bytes, mime: str) -> dict | None:
         "ถ้าไม่ใช่สลิป (เช่น รูปคน, สติกเกอร์, สกรีนช็อตแชท, การ์ตูน) ให้ is_slip=false และ field อื่น "
         "เป็น null ทั้งหมด"
     )
-    body = {
-        "contents": [{"role": "user", "parts": [
-            {"text": prompt},
-            {"inlineData": {"mimeType": mime or "image/jpeg", "data": b64}},
-        ]}],
-        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1, "maxOutputTokens": 400},
-    }
     try:
-        async with httpx.AsyncClient(timeout=8) as c:
-            r = await c.post(url, json=body)
-        j = r.json()
-        if r.status_code != 200:
-            print("gemini slip classify http error:", r.status_code, str(j)[:300])
-            return None
-        cand = (j.get("candidates") or [{}])[0]
-        parts = (cand.get("content") or {}).get("parts") or []
-        text = "".join(p.get("text", "") for p in parts).strip()
+        client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=8)
+        resp = await client.messages.create(
+            model=ANTHROPIC_MODEL, max_tokens=400, temperature=0.1,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                 "media_type": mime or "image/jpeg", "data": b64}},
+                {"type": "text", "text": prompt},
+            ]}],
+        )
+        text = "".join(b.text for b in resp.content if b.type == "text").strip()
+        text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
         data = json.loads(text)
         return {
             "is_slip": bool(data.get("is_slip")),
@@ -739,7 +738,7 @@ async def _gemini_classify_slip(image_bytes: bytes, mime: str) -> dict | None:
             "date": data.get("date"),
         }
     except Exception as e:
-        print("gemini slip classify error:", e)
+        print("claude slip classify error:", e)
         return None
 
 
@@ -1189,44 +1188,45 @@ async def _gemini_retrieve(question: str, k: int = 6) -> str:
         f"[{it['title']}]\n{it['body'][:500]}" for _s, it in top)
 
 
-_GEMINI_TOOLS = [{"functionDeclarations": [
+# tool schema แบบ Anthropic (name/description/input_schema) — ใช้กับ Claude ผ่าน _gemini_answer
+_GEMINI_TOOLS = [
     {
         "name": "get_my_account",
         "description": "ดูข้อมูลการลงทะเบียนเรียนและการชำระเงินของผู้ใช้ที่กำลังคุยอยู่ "
                        "(หลักสูตรที่ลงทะเบียน, จ่ายแล้ว/ยัง, สถานะสลิปล่าสุด)",
-        "parameters": {"type": "object", "properties": {}},
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "get_course_details",
         "description": "ดูรายละเอียดหลักสูตร: ราคา ราคาเต็ม ธนาคาร เลขบัญชี ชื่อบัญชีสำหรับโอนเงิน",
-        "parameters": {"type": "object", "properties": {
+        "input_schema": {"type": "object", "properties": {
             "course": {"type": "string", "description": "รหัสหลักสูตร เช่น FC IC PC AC"}}, "required": ["course"]},
     },
     {
         "name": "get_class_info",
         "description": "ดูข้อมูลคลาส/รุ่นของหลักสูตร: วันเริ่มเรียน ตารางเรียน ลิงก์ Zoom ลิงก์เอกสาร",
-        "parameters": {"type": "object", "properties": {
+        "input_schema": {"type": "object", "properties": {
             "course": {"type": "string", "description": "รหัสหลักสูตร เช่น FC IC PC"}}, "required": ["course"]},
     },
     {
         "name": "search_knowledge",
         "description": "ค้นหาข้อมูลเพิ่มเติมในคลังความรู้ของเพจ ใช้เมื่อยังตอบคำถามไม่ได้จากข้อมูลที่มี",
-        "parameters": {"type": "object", "properties": {
+        "input_schema": {"type": "object", "properties": {
             "query": {"type": "string", "description": "คำค้น"}}, "required": ["query"]},
     },
     {
         "name": "note_interest",
         "description": "บันทึกว่าผู้ใช้สนใจหลักสูตรนี้ (ยังไม่ได้ลงทะเบียน) เรียกเมื่อผู้ใช้แสดงความสนใจอยากเรียน/สมัคร",
-        "parameters": {"type": "object", "properties": {
+        "input_schema": {"type": "object", "properties": {
             "course": {"type": "string", "description": "รหัสหลักสูตรที่สนใจ"}}, "required": ["course"]},
     },
     {
         "name": "escalate_to_admin",
         "description": "เรียกแอดมินมาช่วย — ใช้เมื่อผู้ใช้ต้องการคุยกับคน, ร้องเรียน, หรือคำถามที่ต้องให้คนตัดสินใจ",
-        "parameters": {"type": "object", "properties": {
+        "input_schema": {"type": "object", "properties": {
             "reason": {"type": "string", "description": "สรุปสั้น ๆ ว่าผู้ใช้ต้องการอะไร"}}, "required": ["reason"]},
     },
-]}]
+]
 
 _gemini_escalations: dict = {}   # uid -> reason (อ่านหลัง reply เพื่อ bump unread/tag)
 
@@ -1304,11 +1304,9 @@ async def _gemini_tool_exec(name: str, args: dict, uid: str) -> dict:
 async def _gemini_answer(question: str, temperature: float = 0.7, context: str = "",
                          history: list | None = None, uid: str | None = None,
                          user_facts: str = "") -> str | None:
-    """ตอบด้วย Gemini + ประวัติการคุย + เครื่องมือดูข้อมูลบัญชี/หลักสูตร — คืน None ถ้า error/ว่าง"""
-    if not GEMINI_API_KEY or not question.strip():
+    """ตอบด้วย Claude (Anthropic) + ประวัติการคุย + เครื่องมือดูข้อมูลบัญชี/หลักสูตร — คืน None ถ้า error/ว่าง"""
+    if not ANTHROPIC_API_KEY or not question.strip():
         return None
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}")
     sys_text = (
         "คุณเป็นผู้ช่วยของเพจติวสอบ ตอบสมาชิกทางไลน์ เป็นภาษาไทย เป็นกันเอง กระชับ ไม่เกิน 4-5 ประโยค "
         "ห้ามขึ้นต้นว่า 'สวัสดีครับ/ค่ะ' ทุกครั้ง (คุยต่อเนื่องอยู่) "
@@ -1325,70 +1323,64 @@ async def _gemini_answer(question: str, temperature: float = 0.7, context: str =
     if context:
         sys_text += "\n\n=== ข้อมูลอ้างอิง ===\n" + context
 
-    contents: list = []
+    messages: list = []
     for m in (history or [])[-8:]:
-        contents.append({"role": m["role"], "parts": [{"text": m["text"][:800]}]})
-    contents.append({"role": "user", "parts": [{"text": question[:2000]}]})
+        role = "assistant" if m["role"] in ("model", "assistant") else "user"
+        messages.append({"role": role, "content": m["text"][:800]})
+    messages.append({"role": "user", "content": question[:2000]})
 
-    body = {
-        "contents": contents,
-        "systemInstruction": {"parts": [{"text": sys_text}]},
-        "generationConfig": {
-            "maxOutputTokens": 8192,   # thinking model — เผื่อ thinking + คำตอบ
-            "temperature": max(0.0, min(2.0, temperature if temperature is not None else 0.7)),
-        },
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=25)
+    kwargs = {
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": 1024,
+        "temperature": max(0.0, min(1.0, temperature if temperature is not None else 0.7)),
+        "system": sys_text,
+        "messages": messages,
     }
     if uid:
-        body["tools"] = _GEMINI_TOOLS
+        kwargs["tools"] = _GEMINI_TOOLS
 
-    def _text_of(cand):
-        parts = (cand.get("content") or {}).get("parts") or []
-        return "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+    def _text_of(resp):
+        return "".join(b.text for b in resp.content if b.type == "text").strip()
 
     try:
-        async with httpx.AsyncClient(timeout=25) as c:
-            last_text = ""
-            for _round in range(5):
-                r = await c.post(url, json=body)
-                j = r.json()
-                if r.status_code != 200:
-                    print("gemini http error:", r.status_code, str(j)[:400])
-                    return None
-                cand = (j.get("candidates") or [{}])[0]
-                parts = (cand.get("content") or {}).get("parts") or []
-                txt = _text_of(cand)
+        last_text = ""
+        for _round in range(5):
+            resp = await client.messages.create(**kwargs)
+            txt = _text_of(resp)
+            if txt:
+                last_text = txt
+            calls = [b for b in resp.content if b.type == "tool_use"]
+            if not calls:
                 if txt:
-                    last_text = txt
-                calls = [p["functionCall"] for p in parts if isinstance(p, dict) and p.get("functionCall")]
-                if not calls:
-                    if txt:
-                        return txt
-                    # จบแต่ไม่มีข้อความ (thinking กินหมด / MAX_TOKENS) -> ลองอีกรอบไม่ใช้ tool
-                    break
-                body["contents"].append({"role": "model", "parts": parts})
-                fresp = []
-                for fc in calls:
-                    res = await _gemini_tool_exec(fc.get("name", ""), fc.get("args") or {}, uid or "")
-                    fresp.append({"functionResponse": {"name": fc.get("name", ""), "response": {"result": res}}})
-                body["contents"].append({"role": "user", "parts": fresp})
+                    return txt
+                break  # จบแต่ไม่มีข้อความ -> ลองอีกรอบไม่ใช้ tool
+            kwargs["messages"].append({"role": "assistant", "content": resp.content})
+            tool_results = []
+            for tu in calls:
+                res = await _gemini_tool_exec(tu.name, tu.input or {}, uid or "")
+                tool_results.append({"type": "tool_result", "tool_use_id": tu.id,
+                                     "content": json.dumps(res, ensure_ascii=False)})
+            kwargs["messages"].append({"role": "user", "content": tool_results})
 
-            if last_text:
-                return last_text
-            # รอบสุดท้าย: บังคับให้ตอบเป็นข้อความ ไม่มี tool
-            body.pop("tools", None)
-            body["contents"].append({"role": "user", "parts": [{"text": "สรุปคำตอบเป็นข้อความสั้น ๆ ให้ลูกค้าเลย"}]})
-            r = await c.post(url, json=body)
-            if r.status_code == 200:
-                return _text_of((r.json().get("candidates") or [{}])[0]) or None
+        if last_text:
+            return last_text
+        # รอบสุดท้าย: บังคับให้ตอบเป็นข้อความ ไม่มี tool
+        kwargs.pop("tools", None)
+        kwargs["messages"].append({"role": "user", "content": "สรุปคำตอบเป็นข้อความสั้น ๆ ให้ลูกค้าเลย"})
+        resp = await client.messages.create(**kwargs)
+        return _text_of(resp) or None
+    except anthropic.APIStatusError as e:
+        print("claude http error:", e.status_code, str(e.message)[:400])
         return None
     except Exception as e:
-        print("gemini error:", repr(e))
+        print("claude error:", repr(e))
         return None
 
 
 async def _gemini_enabled_menu_ids() -> set:
-    """rich_menu_id ทั้งหมดที่เปิด Gemini (gemini_enabled=true หรือชื่อตรง GEMINI_TRIGGER_MENU_NAME)"""
-    if not GEMINI_API_KEY:
+    """rich_menu_id ทั้งหมดที่เปิด Gemini/AI (gemini_enabled=true หรือชื่อตรง GEMINI_TRIGGER_MENU_NAME)"""
+    if not ANTHROPIC_API_KEY:
         return set()
     ids: set = set()
     try:
@@ -1408,9 +1400,9 @@ async def _gemini_enabled_menu_ids() -> set:
 
 
 async def _handle_gemini_replies(events: list) -> set:
-    """ตอบข้อความที่ไม่ตรงกฎไหน ด้วย Gemini — เรียกหลัง _handle_auto_replies แล้ว
-    (events ถูกกรองมาแล้วว่าเป็น text ของ user บนเมนู Gemini ที่ยังไม่มีใครตอบ)"""
-    if not GEMINI_API_KEY:
+    """ตอบข้อความที่ไม่ตรงกฎไหน ด้วย Claude (Anthropic) — เรียกหลัง _handle_auto_replies แล้ว
+    (events ถูกกรองมาแล้วว่าเป็น text ของ user บนเมนู AI ที่ยังไม่มีใครตอบ)"""
+    if not ANTHROPIC_API_KEY:
         return set()
     text_events = [e for e in events if e.get("type") == "message"
                    and e.get("message", {}).get("type") == "text"
@@ -1516,7 +1508,7 @@ async def _handle_gemini_replies(events: list) -> set:
             handled.add(uid)
             out_msgs.append({"line_user_id": uid, "direction": "out", "by": "gemini",
                              "msg_type": "text", "text": answer,
-                             "payload": {"question": question, "model": GEMINI_MODEL}})
+                             "payload": {"question": question, "model": ANTHROPIC_MODEL}})
             # Gemini เรียก escalate_to_admin หรือ AI ตอบไม่ได้ -> bump unread + tag ให้แอดมินเห็น
             if uid in _gemini_escalations or not gemini_ok:
                 try:

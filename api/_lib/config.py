@@ -47,11 +47,16 @@ ENFORCE_RICHMENU_ID = os.environ.get("ENFORCE_RICHMENU_ID", "").strip()
 # richMenuId ที่ยกเว้นไม่ถูกบังคับ (คั่นด้วย ,) เช่นเมนูแคมเปญที่ตั้งใจให้ user อยู่ต่อ
 ENFORCE_EXCLUDE_MENUS = [m.strip() for m in os.environ.get("ENFORCE_EXCLUDE_MENUS", "").split(",") if m.strip()]
 
-# (ตัวเลือก) Gemini AI ตอบคำถามอิสระ — เฉพาะ user ที่ current rich menu ตรงชื่อนี้
-# เว้นว่าง GEMINI_API_KEY = ปิดฟีเจอร์นี้ทั้งหมด (ไม่กระทบ auto-reply/automation เดิม)
+# (ตัวเลือก) AI ตอบคำถามอิสระ — เฉพาะ user ที่ current rich menu ตรงชื่อนี้
+# เว้นว่าง ANTHROPIC_API_KEY = ปิดฟีเจอร์นี้ทั้งหมด (ไม่กระทบ auto-reply/automation เดิม)
+# GEMINI_API_KEY เก็บไว้เผื่อย้อนกลับ/เทียบผล — ตัวที่ใช้งานจริงตอนนี้คือ Anthropic (Claude) ตาม ANTHROPIC_*
+# ชื่อ setting/คอลัมน์ในระบบ (gemini_enabled, gemini_temperature, gemini_context ฯลฯ) ยังใช้คำเดิม
+# เพื่อไม่ต้อง migrate ฐานข้อมูล — แต่โมเดลที่ตอบจริงคือ Claude แล้ว
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip()
 GEMINI_TRIGGER_MENU_NAME = os.environ.get("GEMINI_TRIGGER_MENU_NAME", "แล้วพบกัน").strip()
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5").strip()
 
 # domain ของเว็บนี้ (สำหรับแสดง endpoint แนะนำ) — auto จาก VERCEL_URL
 APP_URL = (os.environ.get("APP_URL")
